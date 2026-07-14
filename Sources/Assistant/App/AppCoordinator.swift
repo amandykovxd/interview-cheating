@@ -20,8 +20,9 @@ final class AppCoordinator {
 
     func start() {
         wireMenuBar()
+        wireOverlay()
         wireHotkeys()
-        startAudio()
+        di.overlayViewModel.status = .idle
         overlay.show()
         applyCaptureHiding()
         Log.app.info("coordinator started")
@@ -33,6 +34,12 @@ final class AppCoordinator {
         menuBar.onToggleOverlay = { [weak self] in self?.overlay.toggle() }
         menuBar.onCaptureAndAsk = { [weak self] in self?.captureAndAsk() }
         menuBar.onQuit = { NSApp.terminate(nil) }
+    }
+
+    private func wireOverlay() {
+        di.overlayViewModel.onToggleListening = { [weak self] in self?.toggleAudio() }
+        di.overlayViewModel.onCaptureAndAsk = { [weak self] in self?.captureAndAsk() }
+        di.overlayViewModel.onHideOverlay = { [weak self] in self?.overlay.hide() }
     }
 
     private func wireHotkeys() {
@@ -48,9 +55,11 @@ final class AppCoordinator {
     // MARK: - Аудио -> ASR -> контекст
 
     private func startAudio() {
+        guard audioTask == nil else { return }
         di.overlayViewModel.status = .listening
         do {
             let segments = try di.audioPipeline.start()
+            di.overlayViewModel.isListening = true
             audioTask = Task { [weak self] in
                 for await segment in segments {
                     await self?.transcribe(segment)
@@ -58,7 +67,26 @@ final class AppCoordinator {
             }
         } catch {
             Log.audio.error("audio start failed: \(error.localizedDescription)")
+            di.overlayViewModel.isListening = false
             di.overlayViewModel.showError("Нет доступа к микрофону")
+        }
+    }
+
+    private func stopAudio() {
+        audioTask?.cancel()
+        audioTask = nil
+        di.audioPipeline.stop()
+        di.overlayViewModel.isListening = false
+        if case .listening = di.overlayViewModel.status {
+            di.overlayViewModel.status = .idle
+        }
+    }
+
+    private func toggleAudio() {
+        if audioTask == nil {
+            startAudio()
+        } else {
+            stopAudio()
         }
     }
 

@@ -16,6 +16,11 @@ final class OverlayViewModel: ObservableObject {
     @Published var status: Status = .idle
     @Published var answer: String = ""
     @Published var lastTranscript: String = ""
+    @Published var isListening: Bool = false
+
+    var onToggleListening: (() -> Void)?
+    var onCaptureAndAsk: (() -> Void)?
+    var onHideOverlay: (() -> Void)?
 
     // Батчим обновление ответа, чтобы не перерисовывать на каждый токен.
     private var pendingAnswer: String = ""
@@ -35,7 +40,7 @@ final class OverlayViewModel: ObservableObject {
     func finishAnswer() {
         flushTask?.cancel()
         answer = pendingAnswer
-        status = .idle
+        status = isListening ? .listening : .idle
     }
 
     func showError(_ message: String) {

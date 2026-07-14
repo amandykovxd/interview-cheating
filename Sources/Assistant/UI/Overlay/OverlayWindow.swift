@@ -16,8 +16,7 @@ final class OverlayWindow: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         isFloatingPanel = true
         isMovableByWindowBackground = true
-        // по умолчанию клики сквозь окно, включаем интерактив только при наведении
-        ignoresMouseEvents = true
+        ignoresMouseEvents = false
     }
 
     override var canBecomeKey: Bool { false }

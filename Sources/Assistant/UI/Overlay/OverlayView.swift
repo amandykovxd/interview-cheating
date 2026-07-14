@@ -7,6 +7,7 @@ struct OverlayView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             statusRow
+            controlRow
             Divider().opacity(0.3)
             ScrollView {
                 Text(displayText)
@@ -18,10 +19,6 @@ struct OverlayView: View {
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-        // интерактив включаем только под курсором — иначе клики идут сквозь окно
-        .onHover { hovering in
-            (NSApp.keyWindow ?? overlayWindow())?.ignoresMouseEvents = !hovering
-        }
     }
 
     private var statusRow: some View {
@@ -30,6 +27,34 @@ struct OverlayView: View {
             Text(statusText).font(.system(size: 11)).foregroundStyle(.secondary)
             Spacer()
         }
+    }
+
+    private var controlRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                model.onToggleListening?()
+            } label: {
+                Label(model.isListening ? "Стоп" : "Слушать",
+                      systemImage: model.isListening ? "mic.slash" : "mic")
+            }
+
+            Button {
+                model.onCaptureAndAsk?()
+            } label: {
+                Label("Экран", systemImage: "viewfinder")
+            }
+
+            Spacer()
+
+            Button {
+                model.onHideOverlay?()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .help("Скрыть overlay")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
     }
 
     private var displayText: String {
@@ -57,9 +82,5 @@ struct OverlayView: View {
         case .thinking, .answering: return .orange
         case .error: return .red
         }
-    }
-
-    private func overlayWindow() -> NSWindow? {
-        NSApp.windows.first { $0 is OverlayWindow }
     }
 }
