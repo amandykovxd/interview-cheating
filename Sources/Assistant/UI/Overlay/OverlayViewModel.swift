@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// Состояние overlay. Только отображение, никакой бизнес-логики.
+/// Состояние overlay. Только отображение и ввод, никакой бизнес-логики.
 /// Обновляется координатором на main.
 @MainActor
 final class OverlayViewModel: ObservableObject {
@@ -18,9 +18,31 @@ final class OverlayViewModel: ObservableObject {
     @Published var lastTranscript: String = ""
     @Published var isListening: Bool = false
 
+    // Состояние LLM-endpoint (ожидание llama на порту / готовность / нет ключа).
+    @Published var llmReady: Bool = false
+    @Published var llmStatusText: String = ""
+    @Published var providerTitle: String = ""
+    @Published var isGenerating: Bool = false
+
+    // Панель подключения провайдера.
+    @Published var showSettings: Bool = false
+    @Published var portText: String = "11434"
+    @Published var apiKeyInput: String = ""
+
+    // Текстовый чат с LLM.
+    @Published var chatInput: String = ""
+
+    // Действия наружу.
     var onToggleListening: (() -> Void)?
     var onCaptureAndAsk: (() -> Void)?
     var onHideOverlay: (() -> Void)?
+    var onUseLocalLlama: ((_ port: Int) -> Void)?
+    var onConnectOpenAI: ((_ apiKey: String) -> Void)?
+    var onOpenOpenAIKeysPage: (() -> Void)?
+    var onToggleSettings: (() -> Void)?
+    var onSendMessage: ((_ text: String) -> Void)?
+    var onRequestActivation: (() -> Void)?   // активировать приложение при фокусе поля
+    var onStopGeneration: (() -> Void)?
 
     // Батчим обновление ответа, чтобы не перерисовывать на каждый токен.
     private var pendingAnswer: String = ""
@@ -30,6 +52,7 @@ final class OverlayViewModel: ObservableObject {
         answer = ""
         pendingAnswer = ""
         status = .answering
+        isGenerating = true
     }
 
     func appendDelta(_ delta: String) {
@@ -39,18 +62,20 @@ final class OverlayViewModel: ObservableObject {
 
     func finishAnswer() {
         flushTask?.cancel()
+        flushTask = nil
         answer = pendingAnswer
+        isGenerating = false
         status = isListening ? .listening : .idle
     }
 
     func showError(_ message: String) {
+        isGenerating = false
         status = .error(message)
     }
 
     private func scheduleFlush() {
         guard flushTask == nil else { return }
         flushTask = Task { [weak self] in
-            // раз в ~50 мс переносим накопленное в published-поле
             try? await Task.sleep(nanoseconds: 50_000_000)
             guard let self else { return }
             self.answer = self.pendingAnswer

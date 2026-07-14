@@ -15,7 +15,6 @@ final class AudioPipeline {
     private var pending: [Float] = []        // накопитель текущего сегмента
     private var carry: [Float] = []          // остаток кадра между буферами
     private var segmentStart: TimeInterval = 0
-    private var sessionStart = Date()
 
     private var continuation: AsyncStream<AudioSegment>.Continuation?
 
@@ -24,7 +23,12 @@ final class AudioPipeline {
     }
 
     func start() throws -> AsyncStream<AudioSegment> {
-        sessionStart = Date()
+        // сбрасываем состояние VAD/накопителей, но НЕ часы: таймлайн монотонный
+        // на всё время работы, чтобы окно контекста корректно старело между
+        // сессиями "Слушать" (start/stop)
+        vad.reset()
+        pending.removeAll()
+        carry.removeAll()
         let stream = AsyncStream<AudioSegment> { continuation in
             self.continuation = continuation
         }
@@ -87,7 +91,9 @@ final class AudioPipeline {
         continuation?.yield(segment)
     }
 
+    // Монотонные часы от старта процесса: не сбрасываются при stop/start,
+    // не прыгают при переводе системного времени.
     private func now() -> TimeInterval {
-        Date().timeIntervalSince(sessionStart)
+        ProcessInfo.processInfo.systemUptime
     }
 }

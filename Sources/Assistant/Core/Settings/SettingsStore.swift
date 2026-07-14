@@ -9,38 +9,70 @@ final class SettingsStore {
         self.defaults = defaults
     }
 
-    // Базовый URL LLM. По умолчанию — локальный OpenAI-совместимый сервер (llama.cpp/Ollama).
+    // MARK: - Провайдер
+
+    var provider: LLMProvider {
+        get {
+            LLMProvider(rawValue: defaults.string(forKey: Keys.provider) ?? "") ?? .localLlama
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.provider) }
+    }
+
+    // Порт локального сервера. Именно его "ждём" при старте.
+    var localLlamaPort: Int {
+        get {
+            let v = defaults.integer(forKey: Keys.localPort)
+            return v == 0 ? 11434 : v
+        }
+        set { defaults.set(newValue, forKey: Keys.localPort) }
+    }
+
+    var localLlamaModel: String {
+        get { defaults.string(forKey: Keys.localModel) ?? "llama3.1" }
+        set { defaults.set(newValue, forKey: Keys.localModel) }
+    }
+
+    var openAIModel: String {
+        get { defaults.string(forKey: Keys.openAIModel) ?? "gpt-4o-mini" }
+        set { defaults.set(newValue, forKey: Keys.openAIModel) }
+    }
+
+    // MARK: - Производные значения для LLMClient
+
     var llmBaseURL: String {
-        get { defaults.string(forKey: Keys.llmBaseURL) ?? "http://127.0.0.1:11434/v1" }
-        set { defaults.set(newValue, forKey: Keys.llmBaseURL) }
+        switch provider {
+        case .localLlama: return "http://127.0.0.1:\(localLlamaPort)/v1"
+        case .openAI: return "https://api.openai.com/v1"
+        }
     }
 
     var llmModel: String {
-        get { defaults.string(forKey: Keys.llmModel) ?? "llama3.1" }
-        set { defaults.set(newValue, forKey: Keys.llmModel) }
+        switch provider {
+        case .localLlama: return localLlamaModel
+        case .openAI: return openAIModel
+        }
     }
 
-    // Требует ли выбранный endpoint ключ. Локальный сервер обычно нет.
-    var llmRequiresKey: Bool {
-        get { defaults.bool(forKey: Keys.llmRequiresKey) }
-        set { defaults.set(newValue, forKey: Keys.llmRequiresKey) }
-    }
+    var llmRequiresKey: Bool { provider.requiresKey }
+
+    // MARK: - Прочее
 
     var asrModelName: String {
         get { defaults.string(forKey: Keys.asrModelName) ?? "base" }
         set { defaults.set(newValue, forKey: Keys.asrModelName) }
     }
 
-    // Экспериментальное скрытие overlay от записи экрана. По умолчанию выключено.
+    // По умолчанию скрываем окно из захвата экрана (см. оговорку в OverlayWindow).
     var hideOverlayFromCapture: Bool {
-        get { defaults.bool(forKey: Keys.hideOverlayFromCapture) }
+        get { defaults.object(forKey: Keys.hideOverlayFromCapture) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Keys.hideOverlayFromCapture) }
     }
 
     private enum Keys {
-        static let llmBaseURL = "llm.baseURL"
-        static let llmModel = "llm.model"
-        static let llmRequiresKey = "llm.requiresKey"
+        static let provider = "llm.provider"
+        static let localPort = "llm.local.port"
+        static let localModel = "llm.local.model"
+        static let openAIModel = "llm.openai.model"
         static let asrModelName = "asr.modelName"
         static let hideOverlayFromCapture = "overlay.hideFromCapture"
     }

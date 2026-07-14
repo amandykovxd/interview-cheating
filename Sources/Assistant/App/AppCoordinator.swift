@@ -11,6 +11,9 @@ final class AppCoordinator {
 
     private var audioTask: Task<Void, Never>?
     private var answerTask: Task<Void, Never>?
+    private var llmMonitorTask: Task<Void, Never>?
+
+    private let health = LLMHealthChecker()
 
     init(di: DIContainer) {
         self.di = di
@@ -23,6 +26,8 @@ final class AppCoordinator {
         wireOverlay()
         wireHotkeys()
         di.overlayViewModel.status = .idle
+        refreshProviderTitle()
+        startLLMMonitor()
         overlay.show()
         applyCaptureHiding()
         Log.app.info("coordinator started")
@@ -37,9 +42,133 @@ final class AppCoordinator {
     }
 
     private func wireOverlay() {
-        di.overlayViewModel.onToggleListening = { [weak self] in self?.toggleAudio() }
-        di.overlayViewModel.onCaptureAndAsk = { [weak self] in self?.captureAndAsk() }
-        di.overlayViewModel.onHideOverlay = { [weak self] in self?.overlay.hide() }
+        let vm = di.overlayViewModel
+        vm.onToggleListening = { [weak self] in self?.toggleAudio() }
+        vm.onCaptureAndAsk = { [weak self] in self?.captureAndAsk() }
+        vm.onHideOverlay = { [weak self] in self?.overlay.hide() }
+        vm.onUseLocalLlama = { [weak self] port in self?.useLocalLlama(port: port) }
+        vm.onConnectOpenAI = { [weak self] key in self?.connectOpenAI(apiKey: key) }
+        vm.onOpenOpenAIKeysPage = { [weak self] in self?.openOpenAIKeysPage() }
+        vm.onToggleSettings = { [weak self] in self?.toggleSettings() }
+        vm.onSendMessage = { [weak self] text in self?.sendChat(text) }
+        vm.onRequestActivation = { [weak self] in self?.activateForInput() }
+        vm.onStopGeneration = { [weak self] in self?.stopGeneration() }
+        vm.portText = String(di.settings.localLlamaPort)
+    }
+
+    // Прервать генерацию: отменяем задачу стрима, частичный ответ оставляем на экране.
+    private func stopGeneration() {
+        answerTask?.cancel()
+        answerTask = nil
+        di.overlayViewModel.finishAnswer()
+    }
+
+    // Активируем приложение и делаем окно key — иначе поля ввода accessory-приложения
+    // с nonactivating-панелью не получают клавиатуру (⌘V/набор).
+    private func activateForInput() {
+        NSApp.activate(ignoringOtherApps: true)
+        overlay.window.makeKeyAndOrderFront(nil)
+    }
+
+    private func toggleSettings() {
+        let vm = di.overlayViewModel
+        vm.showSettings.toggle()
+        if vm.showSettings {
+            activateForInput()
+        } else {
+            overlay.window.resignKey()
+        }
+    }
+
+    // Текстовый запрос из поля чата: тот же путь, что и остальные запросы к LLM.
+    private func sendChat(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        answerTask?.cancel()
+        answerTask = Task { [weak self] in
+            await self?.streamAnswer(instruction: trimmed)
+        }
+    }
+
+    // MARK: - Провайдер LLM
+
+    private func refreshProviderTitle() {
+        di.overlayViewModel.providerTitle = di.settings.provider.title
+    }
+
+    private func useLocalLlama(port: Int) {
+        di.settings.provider = .localLlama
+        di.settings.localLlamaPort = port
+        refreshProviderTitle()
+        Log.llm.info("switched to local llama on :\(port)")
+        startLLMMonitor()
+    }
+
+    private func connectOpenAI(apiKey: String) {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            // ключ уходит только в Keychain, в логи/UI не пишем
+            try di.secureStore.setSecret(trimmed, for: .llmAPIKey)
+            di.settings.provider = .openAI
+            refreshProviderTitle()
+            di.overlayViewModel.showSettings = false
+            Log.llm.info("OpenAI key stored, provider switched")
+            startLLMMonitor()
+        } catch {
+            di.overlayViewModel.showError("Не удалось сохранить ключ")
+        }
+    }
+
+    private func openOpenAIKeysPage() {
+        if let url = LLMProvider.openAI.accountURL {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - Ожидание LLM endpoint
+
+    private func startLLMMonitor() {
+        llmMonitorTask?.cancel()
+        let settings = di.settings
+        let store = di.secureStore
+        llmMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let base = URL(string: settings.llmBaseURL)!
+                let result = await self.health.check(
+                    baseURL: base,
+                    requiresKey: settings.llmRequiresKey,
+                    secureStore: store
+                )
+                self.applyHealth(result)
+                // не готово — опрашиваем чаще, готово — реже
+                let delay: UInt64 = result == .ready ? 15 : 3
+                try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+            }
+        }
+    }
+
+    private func applyHealth(_ health: LLMHealthChecker.Health) {
+        let vm = di.overlayViewModel
+        switch health {
+        case .ready:
+            vm.llmReady = true
+            vm.llmStatusText = "LLM готов"
+        case .waiting:
+            vm.llmReady = false
+            if di.settings.provider == .localLlama {
+                vm.llmStatusText = "жду llama на :\(di.settings.localLlamaPort)"
+            } else {
+                vm.llmStatusText = "нет ответа от OpenAI"
+            }
+        case .needsKey:
+            vm.llmReady = false
+            vm.llmStatusText = "нужен ключ OpenAI"
+        case .unauthorized:
+            vm.llmReady = false
+            vm.llmStatusText = "ключ отклонён"
+        }
     }
 
     private func wireHotkeys() {
@@ -128,6 +257,11 @@ final class AppCoordinator {
     }
 
     private func streamAnswer(instruction: String) async {
+        guard di.overlayViewModel.llmReady else {
+            // не готов — не отправляем, показываем что именно ждём
+            di.overlayViewModel.showError(di.overlayViewModel.llmStatusText)
+            return
+        }
         let snapshot = await di.contextManager.snapshot()
         let request = di.promptBuilder.build(from: snapshot, userInstruction: instruction)
         let client = di.makeLLMClient()
@@ -145,6 +279,9 @@ final class AppCoordinator {
                 }
                 di.overlayViewModel.appendDelta(chunk.delta)
             }
+            di.overlayViewModel.finishAnswer()
+        } catch is CancellationError {
+            // прервали вручную — оставляем частичный ответ, ошибку не показываем
             di.overlayViewModel.finishAnswer()
         } catch let error as LLMError {
             handle(error)

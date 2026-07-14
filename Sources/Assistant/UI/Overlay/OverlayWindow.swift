@@ -17,15 +17,25 @@ final class OverlayWindow: NSPanel {
         isFloatingPanel = true
         isMovableByWindowBackground = true
         ignoresMouseEvents = false
+
+        // ключ панель получает только когда реально нужен ввод (клик по полю),
+        // при обычном показе фокус у активного приложения не отбирается
+        becomesKeyOnlyIfNeeded = true
+
+        // по умолчанию прячем окно из штатного захвата экрана (см. оговорку ниже)
+        sharingType = .none
     }
 
-    override var canBecomeKey: Bool { false }
+    // true — иначе текстовые поля (ввод/вставка ключа) не получают клавиатуру.
+    // Благодаря .nonactivatingPanel панель становится key, не активируя приложение.
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    /// Экспериментальное скрытие от записи экрана.
-    /// ВАЖНО: sharingType=.none убирает окно из большинства ШТАТНЫХ путей захвата,
-    /// но это не гарантия. Поведение менялось между версиями macOS, аппаратный захват
-    /// (грабер/камера) окно видит всегда. Не обещаем невидимость.
+    /// Скрытие от записи экрана.
+    /// ВАЖНО: sharingType=.none убирает окно из большинства ШТАТНЫХ путей захвата
+    /// (скриншот, screen recording, шаринг через системные API), но это НЕ гарантия.
+    /// Поведение менялось между версиями macOS, аппаратный захват (грабер/камера)
+    /// и часть путей ScreenCaptureKit окно всё равно видят. Не обещаем невидимость.
     func setHiddenFromCapture(_ hidden: Bool) {
         sharingType = hidden ? .none : .readOnly
     }
