@@ -1,0 +1,26 @@
+{
+  "": {
+    "swift-dependencies": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/primary.swiftdeps"
+  },
+  "/Users/amandykovxd/Downloads/interview-cheat/Tests/AssistantTests/ContextWindowTests.swift": {
+    "dependencies": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/ContextWindowTests.d",
+    "object": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/ContextWindowTests.swift.o",
+    "swiftmodule": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/ContextWindowTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/ContextWindowTests.swiftdeps",
+    "diagnostics": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/ContextWindowTests.dia"
+  },
+  "/Users/amandykovxd/Downloads/interview-cheat/Tests/AssistantTests/PromptBuilderTests.swift": {
+    "dependencies": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/PromptBuilderTests.d",
+    "object": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/PromptBuilderTests.swift.o",
+    "swiftmodule": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/PromptBuilderTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/PromptBuilderTests.swiftdeps",
+    "diagnostics": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/PromptBuilderTests.dia"
+  },
+  "/Users/amandykovxd/Downloads/interview-cheat/Tests/AssistantTests/SSEParserTests.swift": {
+    "dependencies": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/SSEParserTests.d",
+    "object": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/SSEParserTests.swift.o",
+    "swiftmodule": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/SSEParserTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/SSEParserTests.swiftdeps",
+    "diagnostics": "/Users/amandykovxd/Downloads/interview-cheat/.build/arm64-apple-macosx/debug/AssistantTests.build/SSEParserTests.dia"
+  }
+}
