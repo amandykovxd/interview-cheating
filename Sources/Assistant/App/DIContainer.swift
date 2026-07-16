@@ -12,7 +12,9 @@ final class DIContainer {
     lazy var hotkeys = HotkeyService()
     lazy var overlayViewModel = OverlayViewModel()
 
-    lazy var asrEngine: ASREngine = ASREngineFactory.make(modelName: settings.asrModelName)
+    // Стартует на заглушке, координатор подменит на whisper, когда модель готова.
+    lazy var asrEngine = ASREngineHolder()
+    lazy var modelStore = WhisperModelStore()
 
     lazy var audioPipeline = AudioPipeline(source: MicrophoneSource())
 

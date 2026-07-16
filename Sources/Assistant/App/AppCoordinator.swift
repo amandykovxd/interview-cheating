@@ -12,6 +12,7 @@ final class AppCoordinator {
     private var audioTask: Task<Void, Never>?
     private var answerTask: Task<Void, Never>?
     private var llmMonitorTask: Task<Void, Never>?
+    private var asrSetupTask: Task<Void, Never>?
 
     private let health = LLMHealthChecker()
 
@@ -28,9 +29,49 @@ final class AppCoordinator {
         di.overlayViewModel.status = .idle
         refreshProviderTitle()
         startLLMMonitor()
+        prepareASR()
         overlay.show()
         applyCaptureHiding()
         Log.app.info("coordinator started")
+    }
+
+    // MARK: - ASR: модель и подмена движка
+
+    /// Готовим whisper в фоне: качаем модель, если её нет, грузим и подменяем
+    /// заглушку. До этого момента приложение работает без ASR, но не падает.
+    private func prepareASR() {
+        let model = WhisperModel.named(di.settings.asrModelName)
+        let store = di.modelStore
+        let holder = di.asrEngine
+        let vm = di.overlayViewModel
+
+        asrSetupTask = Task { [weak self] in
+            do {
+                vm.asrStatusText = "ASR: подготовка модели \(model.name)"
+                let url = try await store.ensureAvailable(model) { progress in
+                    Task { @MainActor in
+                        vm.asrStatusText = "ASR: загрузка \(model.name) \(Int(progress * 100))%"
+                    }
+                }
+                // загрузка модели в память — тяжёлая, уводим с main
+                let engine = await Task.detached(priority: .userInitiated) {
+                    WhisperASREngine(modelPath: url)
+                }.value
+
+                guard let engine else {
+                    vm.asrStatusText = "ASR: модель не загрузилась"
+                    return
+                }
+                holder.replace(with: engine)
+                vm.asrStatusText = "ASR: \(model.name)"
+                Log.asr.info("ASR переключён на whisper (\(model.name))")
+            } catch {
+                // без ASR продолжаем работать: OCR и текстовый чат остаются
+                vm.asrStatusText = "ASR: недоступен"
+                Log.asr.error("подготовка ASR не удалась: \(error.localizedDescription)")
+                _ = self
+            }
+        }
     }
 
     // MARK: - Проводка

@@ -63,8 +63,43 @@ swift run Assistant
 - ContextManager (actor) с дедупликацией хвостов и обрезкой окна
 - PromptBuilder: компактный промпт, схлопывание реплик, бюджет по длине
 - LLM стриминг по SSE (OpenAI-совместимый), батчинг обновлений UI
+- Локальный ASR на whisper (Metal + Accelerate), модель качается при первом запуске
+- Текстовый чат с LLM в overlay, кнопка прерывания генерации
 - Keychain для ключа, логи без секретов
 
+## ASR (whisper)
+
+Распознавание локальное. Ядро (`ggml` + `whisper`) собирается из исходников в
+`Vendor/whisper` таргетом `WhisperCore` — без cmake и внешних SPM-пакетов.
+Бэкенд: Metal на GPU + Accelerate.
+
+Модель в бандл не кладём: при первом запуске качается в
+`~/Library/Application Support/Assistant/Models` (`ggml-base.bin` по умолчанию).
+Пока модель не готова, ASR работает на заглушке — приложение не падает, OCR и
+текстовый чат доступны. Когда модель загрузилась, `ASREngineHolder` подменяет
+движок на whisper на лету. Прогресс виден в overlay (`ASR: загрузка base 42%`).
+
+Настройки в `WhisperASREngine.Config`:
+
+- `language = "auto"` — язык намеренно не форсим. С жёстким `ru` английские
+  термины начинают транслитерироваться в кириллицу.
+- `initialPrompt` — подсказка декодеру со списком тех-терминов, поднимает
+  точность на аббревиатурах и названиях.
+- модели: `tiny` (75МБ), `base` (142МБ), `small` (466МБ), все multilingual.
+  tiny/base быстрые, но хуже держат термины; small — лучше для реальной работы.
+
+Проверено на M4: `Testing Whisper integration with Kubernetes and Docker
+deployment` распознаётся на `tiny` дословно за ~0.2с. Интеграционный тест
+`WhisperASREngineTests` гоняет настоящую модель на реальном аудио и
+пропускается, если модель не скачана.
+
+Про Metal: `ggml-metal.metal` компилируется в рантайме через
+`newLibraryWithSource`, который не резолвит `#include` с диска, поэтому
+`ggml-common.h` вшит прямо в шейдер. Ресурсный бандл `Assistant_WhisperCore.bundle`
+обязан лежать внутри `.app` — это делает `scripts/run.sh`, иначе GPU не поднимется.
+
+Чего пока нет: потокового режима с перекрытием окон (распознаём готовые сегменты
+от VAD, partial-результатов нет), Core ML энкодера, system audio вторым источником.
 
 ## Про скрытие overlay от записи экрана
 
@@ -82,13 +117,14 @@ swift run Assistant
 
 ```
 Sources/Assistant/
-  App/       — main, AppDelegate, AppCoordinator, DIContainer
+  App/       — main, AppDelegate, AppMenu, AppCoordinator, DIContainer
   UI/        — Overlay (NSPanel + SwiftUI), MenuBar
   Audio/     — источники, ресемпл, VAD, пайплайн
-  ASR/       — протокол, стаб, seam под whisper
+  ASR/       — протокол, whisper-движок, хранилище моделей, стаб-fallback
   Vision/    — захват области, OCR, пайплайн
-  LLM/       — протокол, OpenAI-совместимый клиент, SSE-парсер
+  LLM/       — протокол, OpenAI-совместимый клиент, SSE-парсер, health-check
   Context/   — окно контекста, менеджер (actor), сборка промпта
   Core/      — логи, Keychain, настройки, хоткеи
-Tests/       — ContextWindow, PromptBuilder, SSEParser
+Vendor/whisper — ядро whisper.cpp/ggml, собирается таргетом WhisperCore (MIT)
+Tests/       — ContextWindow, PromptBuilder, SSEParser, WhisperASREngine
 ```

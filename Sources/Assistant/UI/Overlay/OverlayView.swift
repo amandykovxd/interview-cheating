@@ -38,6 +38,7 @@ struct OverlayView: View {
         HStack(spacing: 6) {
             Circle().fill(statusColor).frame(width: 8, height: 8)
             Text(statusText).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(model.asrStatusText).font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
             Circle().fill(model.llmReady ? .green : .orange).frame(width: 7, height: 7)
             Text(model.llmStatusText).font(.system(size: 11)).foregroundStyle(.secondary)

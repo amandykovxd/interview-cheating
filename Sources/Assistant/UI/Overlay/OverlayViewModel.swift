@@ -23,6 +23,7 @@ final class OverlayViewModel: ObservableObject {
     @Published var llmStatusText: String = ""
     @Published var providerTitle: String = ""
     @Published var isGenerating: Bool = false
+    @Published var asrStatusText: String = "ASR: не готов"
 
     // Панель подключения провайдера.
     @Published var showSettings: Bool = false

@@ -56,6 +56,14 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
+# ресурсные бандлы SPM (в т.ч. ggml-metal.metal для GPU-бэкенда whisper):
+# без них whisper не найдёт шейдер и Metal не поднимется
+BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+for bundle in "$BIN_DIR"/*.bundle; do
+    [ -e "$bundle" ] || continue
+    cp -R "$bundle" "$APP/Contents/Resources/"
+done
+
 # --- 4. Подпись постоянной идентичностью ---
 # identifier фиксируем, чтобы designated requirement не менялся между сборками
 codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" --timestamp=none "$APP"
