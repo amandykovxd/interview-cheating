@@ -337,15 +337,17 @@ final class AppCoordinator {
             await di.contextManager.ingest(ts)
             if result.isFinal {
                 di.overlayViewModel.lastTranscript = result.text
-                await refreshTranscript()
             }
+            // обновляем живой транскрипт и на partial, и на финал
+            await refreshTranscript()
         }
     }
 
-    // Живой транскрипт для overlay: последние реплики, схлопнутые по говорящему.
+    // Живой транскрипт для overlay: финалы + текущие partial-реплики,
+    // схлопнутые по говорящему.
     private func refreshTranscript() async {
-        let snapshot = await di.contextManager.snapshot()
-        di.overlayViewModel.transcript = Self.formatTranscript(snapshot.segments, maxLines: 12)
+        let segments = await di.contextManager.displaySegments()
+        di.overlayViewModel.transcript = Self.formatTranscript(segments, maxLines: 12)
     }
 
     nonisolated static func formatTranscript(_ segments: [TranscriptSegment], maxLines: Int) -> String {

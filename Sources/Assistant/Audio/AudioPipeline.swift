@@ -15,6 +15,7 @@ final class AudioPipeline {
     private var pending: [Float] = []        // накопитель текущего сегмента
     private var carry: [Float] = []          // остаток кадра между буферами
     private var segmentStart: TimeInterval = 0
+    private var lastPartialCount = 0         // сколько сэмплов было на прошлом partial
 
     private var continuation: AsyncStream<AudioSegment>.Continuation?
 
@@ -33,6 +34,7 @@ final class AudioPipeline {
         vad.reset()
         pending.removeAll()
         carry.removeAll()
+        lastPartialCount = 0
         didReceiveInput = false
         let stream = AsyncStream<AudioSegment> { continuation in
             self.continuation = continuation
@@ -69,14 +71,16 @@ final class AudioPipeline {
             case .speechStarted:
                 if pending.isEmpty {
                     segmentStart = now()
+                    lastPartialCount = 0
                 }
                 pending.append(contentsOf: frame)
             case .speechEnded:
                 pending.append(contentsOf: frame)
-                emitSegment()
+                emitSegment(isPartial: false)     // финал
             case nil:
                 if !pending.isEmpty {
                     pending.append(contentsOf: frame)
+                    emitPartialIfDue()             // промежуточный вывод по ходу речи
                 }
             }
             offset += frameSize
@@ -84,16 +88,30 @@ final class AudioPipeline {
         carry.removeFirst(offset)
     }
 
-    private func emitSegment() {
+    // Пока речь идёт, раз в ~partialInterval секунд отдаём накопленное как partial,
+    // чтобы текст появлялся не только после паузы.
+    private func emitPartialIfDue() {
+        let interval = Int(AudioResampler.targetSampleRate * 1.2)
+        if pending.count - lastPartialCount >= interval {
+            lastPartialCount = pending.count
+            emitSegment(isPartial: true)
+        }
+    }
+
+    private func emitSegment(isPartial: Bool) {
         guard !pending.isEmpty else { return }
         let segment = AudioSegment(
             samples: pending,
             sampleRate: AudioResampler.targetSampleRate,
             source: sourceProvider.source,
             start: segmentStart,
-            end: now()
+            end: now(),
+            isPartial: isPartial
         )
-        pending.removeAll(keepingCapacity: true)
+        if !isPartial {
+            pending.removeAll(keepingCapacity: true)   // финал очищает накопитель
+            lastPartialCount = 0
+        }
         continuation?.yield(segment)
     }
 

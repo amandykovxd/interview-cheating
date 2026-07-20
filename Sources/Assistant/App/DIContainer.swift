@@ -16,7 +16,8 @@ final class DIContainer {
     lazy var asrEngine = ASREngineHolder()
     lazy var modelStore = WhisperModelStore()
 
-    lazy var audioPipeline = AudioPipeline(source: MicrophoneSource())
+    lazy var audioPipeline = AudioPipeline(
+        source: MicrophoneSource(echoCancellation: settings.echoCancellation))
     // системный звук отдельным пайплайном: собеседник в созвоне звучит здесь
     lazy var systemAudioPipeline = AudioPipeline(source: SystemAudioSource())
 

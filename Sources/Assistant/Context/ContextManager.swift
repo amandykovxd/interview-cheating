@@ -18,9 +18,15 @@ actor ContextManager {
     }
 
     /// Снимок для сборки промпта: только финальные реплики + свежий OCR.
+    /// Partial-куски сюда не берём — LLM не нужен недописанный текст.
     func snapshot() -> ContextSnapshot {
         let finals = window.segments.filter { $0.isFinal && !$0.text.isEmpty }
         return ContextSnapshot(segments: finals, ocr: window.lastOCR)
+    }
+
+    /// Для живого транскрипта в overlay: финалы + текущие partial-реплики.
+    func displaySegments() -> [TranscriptSegment] {
+        window.segments.filter { !$0.text.isEmpty }
     }
 }
 

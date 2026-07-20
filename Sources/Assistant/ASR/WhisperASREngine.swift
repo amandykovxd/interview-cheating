@@ -20,6 +20,11 @@ final class WhisperASREngine: ASREngine {
     private let config: Config
     private let queue = DispatchQueue(label: "asr.whisper", qos: .userInitiated)
 
+    // Занятость: partial-куски отбрасываем, если whisper уже считает, иначе
+    // при потоковом режиме очередь распухнет. Финалы ждут очередь всегда.
+    private let busyLock = NSLock()
+    private var isBusy = false
+
     // Слишком короткие куски whisper превращает в мусор — такие пропускаем.
     private let minSamples = Int(AudioResampler.targetSampleRate * 0.3)
 
@@ -45,25 +50,53 @@ final class WhisperASREngine: ASREngine {
 
     func transcribe(_ segment: AudioSegment) -> AsyncStream<ASRResult> {
         AsyncStream { continuation in
+            guard segment.samples.count >= minSamples else {
+                continuation.finish()
+                return
+            }
+            // partial отбрасываем, если движок занят; финал всегда встаёт в очередь
+            if segment.isPartial, !beginIfFree() {
+                continuation.finish()
+                return
+            }
+            if !segment.isPartial { markBusy() }
+
             queue.async { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
                 }
-                guard segment.samples.count >= self.minSamples else {
+                defer {
+                    self.clearBusy()
                     continuation.finish()
-                    return
                 }
                 let started = DispatchTime.now()
-                if let result = self.run(samples: segment.samples) {
+                if let res = self.run(samples: segment.samples) {
                     let ms = Double(DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds) / 1_000_000
-                    let audioMs = Double(segment.samples.count) / AudioResampler.targetSampleRate * 1000
-                    Log.asr.debug("asr \(ms, format: .fixed(precision: 0))ms на \(audioMs, format: .fixed(precision: 0))ms аудио")
-                    continuation.yield(result)
+                    Log.asr.debug("asr \(segment.isPartial ? "partial" : "final") \(ms, format: .fixed(precision: 0))ms")
+                    continuation.yield(ASRResult(text: res.text,
+                                                 isFinal: !segment.isPartial,
+                                                 confidence: res.confidence))
                 }
-                continuation.finish()
             }
         }
+    }
+
+    // MARK: - Занятость
+
+    private func beginIfFree() -> Bool {
+        busyLock.lock(); defer { busyLock.unlock() }
+        if isBusy { return false }
+        isBusy = true
+        return true
+    }
+
+    private func markBusy() {
+        busyLock.lock(); isBusy = true; busyLock.unlock()
+    }
+
+    private func clearBusy() {
+        busyLock.lock(); isBusy = false; busyLock.unlock()
     }
 
     // MARK: - Внутреннее

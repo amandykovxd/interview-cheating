@@ -68,6 +68,12 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Keys.hideOverlayFromCapture) }
     }
 
+    // Эхоподавление на микрофоне (Voice Processing). По умолчанию включено.
+    var echoCancellation: Bool {
+        get { defaults.object(forKey: Keys.echoCancellation) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.echoCancellation) }
+    }
+
     private enum Keys {
         static let provider = "llm.provider"
         static let localPort = "llm.local.port"
@@ -75,5 +81,6 @@ final class SettingsStore {
         static let openAIModel = "llm.openai.model"
         static let asrModelName = "asr.modelName"
         static let hideOverlayFromCapture = "overlay.hideFromCapture"
+        static let echoCancellation = "audio.echoCancellation"
     }
 }

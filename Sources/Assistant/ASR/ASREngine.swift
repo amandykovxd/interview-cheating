@@ -7,6 +7,9 @@ struct AudioSegment {
     let source: TranscriptSegment.Source
     let start: TimeInterval
     let end: TimeInterval
+    /// true — промежуточный кусок ещё идущей речи (для потокового вывода),
+    /// false — финал по паузе VAD.
+    var isPartial: Bool = false
 }
 
 struct ASRResult {
