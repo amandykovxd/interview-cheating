@@ -10,6 +10,7 @@ final class AppCoordinator {
     private let menuBar: MenuBarController
 
     private var audioTask: Task<Void, Never>?
+    private var systemAudioTask: Task<Void, Never>?
     private var answerTask: Task<Void, Never>?
     private var llmMonitorTask: Task<Void, Never>?
     private var asrSetupTask: Task<Void, Never>?
@@ -254,25 +255,60 @@ final class AppCoordinator {
     private func startAudio() {
         guard audioTask == nil else { return }
         di.overlayViewModel.status = .listening
+
+        // Микрофон (моя речь). Без него слушать нечего — это ошибка.
         do {
-            let segments = try di.audioPipeline.start()
+            let mic = try di.audioPipeline.start()
             di.overlayViewModel.isListening = true
             audioTask = Task { [weak self] in
-                for await segment in segments {
+                for await segment in mic {
                     await self?.transcribe(segment)
                 }
             }
         } catch {
-            Log.audio.error("audio start failed: \(error.localizedDescription)")
+            Log.audio.error("mic start failed: \(error.localizedDescription)")
             di.overlayViewModel.isListening = false
             di.overlayViewModel.showError("Нет доступа к микрофону")
+            return
+        }
+
+        // Системный звук (собеседник). Может быть недоступен: старая macOS,
+        // нет разрешения на запись звука — тогда просто слушаем один микрофон.
+        do {
+            let system = try di.systemAudioPipeline.start()
+            systemAudioTask = Task { [weak self] in
+                for await segment in system {
+                    await self?.transcribe(segment)
+                }
+            }
+            watchSystemAudio()
+        } catch {
+            Log.audio.error("system audio unavailable: \(error.localizedDescription)")
+            di.overlayViewModel.asrStatusText = "звук собеседника недоступен"
+        }
+    }
+
+    // tap стартует без ошибки, но без разрешения на запись звука не отдаёт буферы.
+    // Если за пару секунд ничего не пришло — подсказываем про разрешение.
+    private func watchSystemAudio() {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard let self, self.systemAudioTask != nil else { return }
+            if !self.di.systemAudioPipeline.didReceiveInput {
+                self.di.overlayViewModel.asrStatusText =
+                    "звук собеседника: нет сигнала (разрешите запись звука)"
+                Log.audio.error("system audio: нет буферов, вероятно нет разрешения")
+            }
         }
     }
 
     private func stopAudio() {
         audioTask?.cancel()
         audioTask = nil
+        systemAudioTask?.cancel()
+        systemAudioTask = nil
         di.audioPipeline.stop()
+        di.systemAudioPipeline.stop()
         di.overlayViewModel.isListening = false
         if case .listening = di.overlayViewModel.status {
             di.overlayViewModel.status = .idle

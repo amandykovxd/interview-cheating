@@ -18,6 +18,10 @@ final class AudioPipeline {
 
     private var continuation: AsyncStream<AudioSegment>.Continuation?
 
+    // Диагностика: пришёл ли хоть один буфер. Для системного звука нулевой
+    // приход обычно значит отсутствие разрешения на запись звука.
+    private(set) var didReceiveInput = false
+
     init(source: AudioSource) {
         self.sourceProvider = source
     }
@@ -29,6 +33,7 @@ final class AudioPipeline {
         vad.reset()
         pending.removeAll()
         carry.removeAll()
+        didReceiveInput = false
         let stream = AsyncStream<AudioSegment> { continuation in
             self.continuation = continuation
         }
@@ -48,6 +53,7 @@ final class AudioPipeline {
 
     // Разбор буфера вне realtime-потока.
     private func handle(_ buffer: AVAudioPCMBuffer) {
+        didReceiveInput = true
         if resampler == nil {
             resampler = AudioResampler(inputFormat: buffer.format)
         }

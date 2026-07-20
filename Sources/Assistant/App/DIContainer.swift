@@ -17,6 +17,8 @@ final class DIContainer {
     lazy var modelStore = WhisperModelStore()
 
     lazy var audioPipeline = AudioPipeline(source: MicrophoneSource())
+    // системный звук отдельным пайплайном: собеседник в созвоне звучит здесь
+    lazy var systemAudioPipeline = AudioPipeline(source: SystemAudioSource())
 
     func makeLLMClient() -> LLMClient {
         let url = URL(string: settings.llmBaseURL) ?? URL(string: "http://127.0.0.1:11434/v1")!

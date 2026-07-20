@@ -24,5 +24,8 @@
     <!-- без этой строки доступ к микрофону падает -->
     <key>NSMicrophoneUsageDescription</key>
     <string>Нужен для распознавания речи с микрофона.</string>
+    <!-- захват системного звука (Core Audio process tap) -->
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Нужен для распознавания речи собеседника из системного звука.</string>
 </dict>
 </plist>
