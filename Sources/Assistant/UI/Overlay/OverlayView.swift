@@ -16,6 +16,9 @@ struct OverlayView: View {
             if model.showSettings {
                 settingsPanel
             }
+            if !model.transcript.isEmpty {
+                transcriptPanel
+            }
             Divider().opacity(0.3)
             answerArea
             Divider().opacity(0.3)
@@ -53,6 +56,13 @@ struct OverlayView: View {
                 Label(model.isListening ? "Стоп" : "Слушать",
                       systemImage: model.isListening ? "mic.slash" : "mic")
             }
+            // основной cheat-флоу: ответить на услышанный вопрос
+            Button {
+                model.onAnswerFromConversation?()
+            } label: {
+                Label("Ответить", systemImage: "bubble.left.and.text.bubble.right")
+            }
+            .disabled(!model.llmReady)
             Button {
                 model.onCaptureAndAsk?()
             } label: {
@@ -74,6 +84,41 @@ struct OverlayView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
+    }
+
+    // MARK: - Живой транскрипт (что слышно)
+
+    private var transcriptPanel: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Разговор").font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    model.onClearContext?()
+                } label: {
+                    Label("Очистить", systemImage: "trash").font(.system(size: 10))
+                }
+                .buttonStyle(.borderless)
+                .help("Сбросить разговор и контекст")
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(model.transcript)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .id("transcriptBottom")
+                }
+                .frame(maxHeight: 90)
+                .onChange(of: model.transcript) { _, _ in
+                    proxy.scrollTo("transcriptBottom", anchor: .bottom)
+                }
+            }
+        }
+        .padding(8)
+        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Ответы LLM (основная область)
@@ -188,8 +233,9 @@ struct OverlayView: View {
     private var displayText: String {
         switch model.status {
         case .error(let msg): return msg
-        case .idle where model.answer.isEmpty: return model.lastTranscript
-        default: return model.answer.isEmpty ? model.lastTranscript : model.answer
+        default:
+            if !model.answer.isEmpty { return model.answer }
+            return "Нажмите «Ответить» по услышанному или спросите в поле ниже."
         }
     }
 

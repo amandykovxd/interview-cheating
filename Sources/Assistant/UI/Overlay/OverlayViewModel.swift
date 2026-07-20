@@ -16,6 +16,7 @@ final class OverlayViewModel: ObservableObject {
     @Published var status: Status = .idle
     @Published var answer: String = ""
     @Published var lastTranscript: String = ""
+    @Published var transcript: String = ""      // живой разговор: кто что сказал
     @Published var isListening: Bool = false
 
     // Состояние LLM-endpoint (ожидание llama на порту / готовность / нет ключа).
@@ -44,6 +45,8 @@ final class OverlayViewModel: ObservableObject {
     var onSendMessage: ((_ text: String) -> Void)?
     var onRequestActivation: (() -> Void)?   // активировать приложение при фокусе поля
     var onStopGeneration: (() -> Void)?
+    var onAnswerFromConversation: (() -> Void)?   // ответить по услышанному разговору
+    var onClearContext: (() -> Void)?
 
     // Батчим обновление ответа, чтобы не перерисовывать на каждый токен.
     private var pendingAnswer: String = ""

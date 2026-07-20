@@ -94,7 +94,34 @@ final class AppCoordinator {
         vm.onSendMessage = { [weak self] text in self?.sendChat(text) }
         vm.onRequestActivation = { [weak self] in self?.activateForInput() }
         vm.onStopGeneration = { [weak self] in self?.stopGeneration() }
+        vm.onAnswerFromConversation = { [weak self] in self?.answerFromConversation() }
+        vm.onClearContext = { [weak self] in self?.clearContext() }
         vm.portText = String(di.settings.localLlamaPort)
+    }
+
+    // Основной cheat-флоу: ответить на то, что собеседник спросил вслух.
+    // Без OCR — только по услышанному разговору.
+    private func answerFromConversation() {
+        answerTask?.cancel()
+        overlay.show()
+        answerTask = Task { [weak self] in
+            await self?.streamAnswer(
+                instruction: "Ответь по существу на последний вопрос или реплику собеседника. Коротко, без воды."
+            )
+        }
+    }
+
+    // Сброс всего накопленного: и разговор, и ответ, и OCR.
+    private func clearContext() {
+        answerTask?.cancel()
+        answerTask = nil
+        let manager = di.contextManager
+        Task { await manager.reset() }
+        let vm = di.overlayViewModel
+        vm.transcript = ""
+        vm.lastTranscript = ""
+        vm.answer = ""
+        vm.status = vm.isListening ? .listening : .idle
     }
 
     // Прервать генерацию: отменяем задачу стрима, частичный ответ оставляем на экране.
@@ -274,8 +301,30 @@ final class AppCoordinator {
             await di.contextManager.ingest(ts)
             if result.isFinal {
                 di.overlayViewModel.lastTranscript = result.text
+                await refreshTranscript()
             }
         }
+    }
+
+    // Живой транскрипт для overlay: последние реплики, схлопнутые по говорящему.
+    private func refreshTranscript() async {
+        let snapshot = await di.contextManager.snapshot()
+        di.overlayViewModel.transcript = Self.formatTranscript(snapshot.segments, maxLines: 12)
+    }
+
+    nonisolated static func formatTranscript(_ segments: [TranscriptSegment], maxLines: Int) -> String {
+        var lines: [String] = []
+        for seg in segments {
+            let speaker = seg.source == .microphone ? "Я" : "Собеседник"
+            let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty { continue }
+            if let last = lines.last, last.hasPrefix(speaker + ":") {
+                lines[lines.count - 1] = last + " " + text
+            } else {
+                lines.append("\(speaker): \(text)")
+            }
+        }
+        return lines.suffix(maxLines).joined(separator: "\n")
     }
 
     // MARK: - Хоткей: OCR + запрос к LLM
