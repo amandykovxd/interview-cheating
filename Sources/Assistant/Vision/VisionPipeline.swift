@@ -24,7 +24,7 @@ final class VisionPipeline {
         lastRun = now
 
         do {
-            let image = try capturer.capture(rect: rect)
+            let image = try await capturer.capture(rect: rect)
             let result = try await ocr.recognize(image)
             Log.vision.info("OCR done, lines=\(result.lines.count)")
             return result

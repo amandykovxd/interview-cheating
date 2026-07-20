@@ -86,6 +86,19 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Keys.useCoreML) }
     }
 
+    // Сохранять историю сессий (зашифрованно). Приватность: по умолчанию ВЫКЛ,
+    // только по явному согласию.
+    var saveHistory: Bool {
+        get { defaults.bool(forKey: Keys.saveHistory) }
+        set { defaults.set(newValue, forKey: Keys.saveHistory) }
+    }
+
+    // Изолировать whisper в отдельном процессе (крэш не роняет UI). По умолчанию да.
+    var isolateWhisper: Bool {
+        get { defaults.object(forKey: Keys.isolateWhisper) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.isolateWhisper) }
+    }
+
     private enum Keys {
         static let provider = "llm.provider"
         static let localPort = "llm.local.port"
@@ -96,5 +109,7 @@ final class SettingsStore {
         static let echoCancellation = "audio.echoCancellation"
         static let hasOnboarded = "app.hasOnboarded"
         static let useCoreML = "asr.useCoreML"
+        static let saveHistory = "history.save"
+        static let isolateWhisper = "asr.isolateWhisper"
     }
 }

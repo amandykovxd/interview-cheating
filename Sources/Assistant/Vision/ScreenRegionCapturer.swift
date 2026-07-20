@@ -1,25 +1,33 @@
+import AppKit
 import CoreGraphics
-import Foundation
+import ScreenCaptureKit
 
-/// Снимает только заданную область экрана, а не весь дисплей.
-/// На старте — CGWindowListCreateImage (простой путь). В v2 переезд на ScreenCaptureKit
-/// ради совместимости с новыми версиями macOS и отзыва прав.
+/// Снимает область экрана через ScreenCaptureKit (SCScreenshotManager, macOS 14+).
+/// Пришло на смену deprecated CGWindowListCreateImage. Наш overlay с
+/// sharingType=.none в кадр не попадает.
 final class ScreenRegionCapturer {
     enum CaptureError: Error {
-        case failed
+        case noDisplay
     }
 
-    /// rect в координатах экрана (глобальных, origin сверху-слева как у CG).
-    func capture(rect: CGRect) throws -> CGImage {
-        // nil-окно => композит всех окон в пределах rect
-        guard let image = CGWindowListCreateImage(
-            rect,
-            .optionOnScreenOnly,
-            kCGNullWindowID,
-            [.bestResolution]
-        ) else {
-            throw CaptureError.failed
+    /// rect в глобальных координатах CG (origin сверху-слева главного экрана) —
+    /// то, что отдаёт RegionSelector.
+    func capture(rect: CGRect) async throws -> CGImage {
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true)
+        guard let display = content.displays.first else {
+            throw CaptureError.noDisplay
         }
-        return image
+
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let config = SCStreamConfiguration()
+        config.sourceRect = rect                    // кроп области (в точках, top-left)
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        config.width = max(1, Int(rect.width * scale))   // Retina-разрешение для OCR
+        config.height = max(1, Int(rect.height * scale))
+        config.showsCursor = false
+
+        return try await SCScreenshotManager.captureImage(
+            contentFilter: filter, configuration: config)
     }
 }

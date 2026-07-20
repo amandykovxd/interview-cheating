@@ -11,6 +11,7 @@ protocol SecureStore {
 
 enum SecretKey: String {
     case llmAPIKey = "llm.api.key"
+    case historyKey = "history.encryption.key"
 }
 
 enum SecureStoreError: Error {

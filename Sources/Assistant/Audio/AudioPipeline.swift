@@ -14,6 +14,8 @@ final class AudioPipeline {
 
     private var pending: [Float] = []        // накопитель текущего сегмента
     private var carry: [Float] = []          // остаток кадра между буферами
+    private var preRoll: [Float] = []        // последние кадры тишины перед речью
+    private let preRollSamples = 480 * 5     // ~150 мс, чтобы не срезать начало фразы
     private var segmentStart: TimeInterval = 0
     private var lastPartialCount = 0         // сколько сэмплов было на прошлом partial
 
@@ -34,6 +36,7 @@ final class AudioPipeline {
         vad.reset()
         pending.removeAll()
         carry.removeAll()
+        preRoll.removeAll()
         lastPartialCount = 0
         didReceiveInput = false
         let stream = AsyncStream<AudioSegment> { continuation in
@@ -72,13 +75,21 @@ final class AudioPipeline {
                 if pending.isEmpty {
                     segmentStart = now()
                     lastPartialCount = 0
+                    pending.append(contentsOf: preRoll)   // подхватываем начало фразы
+                    preRoll.removeAll(keepingCapacity: true)
                 }
                 pending.append(contentsOf: frame)
             case .speechEnded:
                 pending.append(contentsOf: frame)
                 emitSegment(isPartial: false)     // финал
             case nil:
-                if !pending.isEmpty {
+                if pending.isEmpty {
+                    // копим pre-roll из тишины
+                    preRoll.append(contentsOf: frame)
+                    if preRoll.count > preRollSamples {
+                        preRoll.removeFirst(preRoll.count - preRollSamples)
+                    }
+                } else {
                     pending.append(contentsOf: frame)
                     emitPartialIfDue()             // промежуточный вывод по ходу речи
                 }

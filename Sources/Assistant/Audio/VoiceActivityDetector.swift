@@ -1,12 +1,18 @@
 import Foundation
 
-/// Простой энергетический VAD с гистерезисом. Задача — не гнать тишину в ASR
-/// и резать поток на сегменты речи. На v2 заменяется на Silero через Core ML.
+/// Адаптивный энергетический VAD. Не Silero (для него нужен апгрейд whisper),
+/// но заметно устойчивее наивного фиксированного порога:
+///  - плавающий шумовой пол (EMA энергии в тишине) -> порог подстраивается;
+///  - минимальная длительность речи гасит короткие щелчки;
+///  - hangover не рвёт фразу на коротких паузах.
 final class VoiceActivityDetector {
     struct Config {
         var frameSize: Int = 480            // 30 мс при 16 kHz
-        var energyThreshold: Float = 0.0015 // порог RMS, подбирается под микрофон
         var hangoverFrames: Int = 15        // ~450 мс тишины закрывают сегмент
+        var minSpeechFrames: Int = 3        // ~90 мс, чтобы не ловить щелчки
+        var onsetMultiplier: Float = 3.0    // порог = шумовой пол * это
+        var floorAdapt: Float = 0.05        // скорость адаптации пола
+        var minThreshold: Float = 0.0008    // нижняя граница, чтоб не залипнуть в 0
     }
 
     enum Event {
@@ -15,30 +21,39 @@ final class VoiceActivityDetector {
     }
 
     private let config: Config
+    private var noiseFloor: Float = 0.001
     private var inSpeech = false
     private var silenceRun = 0
+    private var speechRun = 0
 
     init(config: Config = Config()) {
         self.config = config
     }
 
-    /// Скармливаем кадр, получаем событие перехода (или nil, если состояние не сменилось).
     func process(_ frame: ArraySlice<Float>) -> Event? {
         let energy = rms(frame)
-        let voiced = energy > config.energyThreshold
+        let threshold = max(config.minThreshold, noiseFloor * config.onsetMultiplier)
+        let voiced = energy > threshold
 
         if voiced {
+            speechRun += 1
             silenceRun = 0
-            if !inSpeech {
+            if !inSpeech && speechRun >= config.minSpeechFrames {
                 inSpeech = true
                 return .speechStarted
             }
-        } else if inSpeech {
-            silenceRun += 1
-            if silenceRun >= config.hangoverFrames {
-                inSpeech = false
-                silenceRun = 0
-                return .speechEnded
+        } else {
+            speechRun = 0
+            if inSpeech {
+                silenceRun += 1
+                if silenceRun >= config.hangoverFrames {
+                    inSpeech = false
+                    silenceRun = 0
+                    return .speechEnded
+                }
+            } else {
+                // пол тянем только в тишине, чтобы речь его не задирала
+                noiseFloor = (1 - config.floorAdapt) * noiseFloor + config.floorAdapt * energy
             }
         }
         return nil
@@ -47,6 +62,8 @@ final class VoiceActivityDetector {
     func reset() {
         inSpeech = false
         silenceRun = 0
+        speechRun = 0
+        noiseFloor = 0.001
     }
 
     private func rms(_ frame: ArraySlice<Float>) -> Float {

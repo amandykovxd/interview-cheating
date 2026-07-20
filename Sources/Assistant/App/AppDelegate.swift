@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        coordinator?.flushHistory()   // сохранить сессию, если есть согласие
+        coordinator?.shutdownASR()    // корректно завершить worker
         container?.audioPipeline.stop()
     }
 }

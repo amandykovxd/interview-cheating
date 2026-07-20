@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Не sandbox: системный аудио-tap и Accessibility в песочнице недоступны. -->
+    <!-- Доступ к аудио-входу (микрофон + захват системного звука). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- Metal компилирует шейдер whisper в рантайме; под hardened runtime
+         это иногда требует разрешения на исполняемую память. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+</dict>
+</plist>

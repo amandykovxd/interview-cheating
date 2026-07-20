@@ -4,10 +4,19 @@ import AppKit
 @MainActor
 final class MenuBarController {
     private let statusItem: NSStatusItem
+    private var historyItem: NSMenuItem?
     var onToggleOverlay: (() -> Void)?
     var onCaptureAndAsk: (() -> Void)?
     var onPermissions: (() -> Void)?
+    var onToggleHistory: (() -> Void)?
+    var onShowHistory: (() -> Void)?
+    var onClearHistory: (() -> Void)?
     var onQuit: (() -> Void)?
+
+    /// Отразить состояние согласия на сохранение истории (галочка).
+    func setHistoryEnabled(_ enabled: Bool) {
+        historyItem?.state = enabled ? .on : .off
+    }
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -24,6 +33,18 @@ final class MenuBarController {
                      action: #selector(toggleAction), keyEquivalent: "")
             .target = self
         menu.addItem(.separator())
+        let hist = NSMenuItem(title: "Сохранять историю",
+                              action: #selector(toggleHistoryAction), keyEquivalent: "")
+        hist.target = self
+        menu.addItem(hist)
+        historyItem = hist
+        menu.addItem(withTitle: "Показать историю…",
+                     action: #selector(showHistoryAction), keyEquivalent: "")
+            .target = self
+        menu.addItem(withTitle: "Очистить историю",
+                     action: #selector(clearHistoryAction), keyEquivalent: "")
+            .target = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Разрешения…",
                      action: #selector(permissionsAction), keyEquivalent: "")
             .target = self
@@ -35,6 +56,9 @@ final class MenuBarController {
     @objc private func captureAction() { onCaptureAndAsk?() }
     @objc private func toggleAction() { onToggleOverlay?() }
     @objc private func permissionsAction() { onPermissions?() }
+    @objc private func toggleHistoryAction() { onToggleHistory?() }
+    @objc private func showHistoryAction() { onShowHistory?() }
+    @objc private func clearHistoryAction() { onClearHistory?() }
     @objc private func quitAction() { onQuit?() }
 }
 

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Ручная сборка зависимостей. DI-фреймворк на такой объём не нужен.
@@ -8,6 +9,15 @@ final class DIContainer {
 
     let permissions = PermissionsService()
     lazy var onboarding = OnboardingWindowController(permissions: permissions)
+
+    // История: ключ шифрования в Keychain, файлы в Application Support.
+    lazy var sessionStore: SessionStore = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Assistant/History", isDirectory: true)
+        let crypto = (try? HistoryCrypto.withKeychainKey(secureStore))
+            ?? HistoryCrypto(key: .init(size: .bits256))
+        return SessionStore(directory: dir, crypto: crypto)
+    }()
 
     lazy var contextManager = ContextManager()
     lazy var promptBuilder = PromptBuilder()

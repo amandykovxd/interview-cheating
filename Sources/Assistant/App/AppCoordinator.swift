@@ -8,6 +8,7 @@ final class AppCoordinator {
     private let di: DIContainer
     private let overlay: OverlayWindowController
     private let menuBar: MenuBarController
+    private lazy var historyWindow = HistoryWindowController(store: di.sessionStore)
 
     private var audioTask: Task<Void, Never>?
     private var systemAudioTask: Task<Void, Never>?
@@ -16,6 +17,11 @@ final class AppCoordinator {
     private var asrSetupTask: Task<Void, Never>?
 
     private let health = LLMHealthChecker()
+
+    // накапливаемая сессия для истории (сохраняется только по согласию)
+    private var session = SavedSession(id: UUID(), startedAt: Date())
+
+    private var processEngine: ProcessASREngine?
 
     init(di: DIContainer) {
         self.di = di
@@ -56,6 +62,7 @@ final class AppCoordinator {
         let holder = di.asrEngine
         let vm = di.overlayViewModel
         let wantCoreML = di.settings.useCoreML
+        let isolate = di.settings.isolateWhisper
         vm.asrModelName = model.name
 
         asrSetupTask = Task { [weak self] in
@@ -77,7 +84,25 @@ final class AppCoordinator {
                     }
                 }
 
-                // загрузка модели в память — тяжёлая, уводим с main
+                // Изолированный процесс (крэш whisper не роняет UI). Если не поднялся —
+                // откатываемся на in-process движок в этом же адресном пространстве.
+                if isolate, let worker = self?.whisperWorkerURL() {
+                    let proc = await Task.detached(priority: .userInitiated) { () -> ProcessASREngine? in
+                        let e = ProcessASREngine(workerURL: worker, modelPath: url)
+                        return e.start() ? e : nil
+                    }.value
+                    if let proc {
+                        self?.processEngine = proc
+                        holder.replace(with: proc)
+                        let backend = proc.usesCoreML ? "Core ML" : "Metal"
+                        vm.asrStatusText = "ASR: \(model.name) · \(backend) · изолир."
+                        Log.asr.info("ASR: изолированный worker (\(model.name), \(backend))")
+                        return
+                    }
+                    Log.asr.error("изоляция недоступна, in-process fallback")
+                }
+
+                // in-process движок
                 let engine = await Task.detached(priority: .userInitiated) {
                     WhisperASREngine(modelPath: url)
                 }.value
@@ -99,13 +124,29 @@ final class AppCoordinator {
         }
     }
 
+    // Бинарь worker-а лежит рядом с исполняемым файлом приложения.
+    private func whisperWorkerURL() -> URL? {
+        let dir = Bundle.main.executableURL?.deletingLastPathComponent()
+            ?? URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+        let url = dir.appendingPathComponent("WhisperWorker")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func shutdownASR() {
+        processEngine?.shutdown()
+    }
+
     // MARK: - Проводка
 
     private func wireMenuBar() {
         menuBar.onToggleOverlay = { [weak self] in self?.overlay.toggle() }
         menuBar.onCaptureAndAsk = { [weak self] in self?.captureAndAsk() }
         menuBar.onPermissions = { [weak self] in self?.di.onboarding.show() }
+        menuBar.onToggleHistory = { [weak self] in self?.toggleHistoryConsent() }
+        menuBar.onShowHistory = { [weak self] in self?.historyWindow.show() }
+        menuBar.onClearHistory = { [weak self] in self?.clearHistory() }
         menuBar.onQuit = { NSApp.terminate(nil) }
+        menuBar.setHistoryEnabled(di.settings.saveHistory)
     }
 
     private func wireOverlay() {
@@ -150,6 +191,8 @@ final class AppCoordinator {
     private func clearContext() {
         answerTask?.cancel()
         answerTask = nil
+        flushHistory()                 // сохраняем сессию (если есть согласие) до сброса
+        session = SavedSession(id: UUID(), startedAt: Date())
         let manager = di.contextManager
         Task { await manager.reset() }
         let vm = di.overlayViewModel
@@ -371,6 +414,8 @@ final class AppCoordinator {
             await di.contextManager.ingest(ts)
             if result.isFinal {
                 di.overlayViewModel.lastTranscript = result.text
+                let speaker = segment.source == .microphone ? "Я" : "Собеседник"
+                session.lines.append(.init(speaker: speaker, text: result.text))
             }
             // обновляем живой транскрипт и на partial, и на финал
             await refreshTranscript()
@@ -449,14 +494,42 @@ final class AppCoordinator {
                 di.overlayViewModel.appendDelta(chunk.delta)
             }
             di.overlayViewModel.finishAnswer()
+            recordExchange(question: instruction, answer: di.overlayViewModel.answer)
         } catch is CancellationError {
             // прервали вручную — оставляем частичный ответ, ошибку не показываем
             di.overlayViewModel.finishAnswer()
+            recordExchange(question: instruction, answer: di.overlayViewModel.answer)
         } catch let error as LLMError {
             handle(error)
         } catch {
             di.overlayViewModel.showError("Не удалось получить ответ")
         }
+    }
+
+    // MARK: - История сессий
+
+    private func recordExchange(question: String, answer: String) {
+        guard !answer.isEmpty else { return }
+        session.exchanges.append(.init(question: question, answer: answer, at: Date()))
+    }
+
+    /// Сохранить текущую сессию, если пользователь дал согласие и есть что писать.
+    func flushHistory() {
+        guard di.settings.saveHistory, !session.isEmpty else { return }
+        let toSave = session
+        let store = di.sessionStore
+        Task { try? await store.save(toSave) }
+    }
+
+    private func clearHistory() {
+        let store = di.sessionStore
+        session = SavedSession(id: UUID(), startedAt: Date())
+        Task { try? await store.deleteAll() }
+    }
+
+    private func toggleHistoryConsent() {
+        di.settings.saveHistory.toggle()
+        menuBar.setHistoryEnabled(di.settings.saveHistory)
     }
 
     private func handle(_ error: LLMError) {

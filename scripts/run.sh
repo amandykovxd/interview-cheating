@@ -48,17 +48,19 @@ ensure_identity
 # --- 2. Сборка ---
 echo ">> swift build -c $CONFIG"
 swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/$APP_NAME"
+BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+BIN="$BIN_DIR/$APP_NAME"
 
 # --- 3. Сборка бандла .app ---
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
+# изолированный процесс распознавания — рядом с основным бинарём
+cp "$BIN_DIR/WhisperWorker" "$APP/Contents/MacOS/WhisperWorker"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
 # ресурсные бандлы SPM (в т.ч. ggml-metal.metal для GPU-бэкенда whisper):
 # без них whisper не найдёт шейдер и Metal не поднимется
-BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 for bundle in "$BIN_DIR"/*.bundle; do
     [ -e "$bundle" ] || continue
     cp -R "$bundle" "$APP/Contents/Resources/"

@@ -8,7 +8,8 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "Assistant", targets: ["Assistant"])
+        .executable(name: "Assistant", targets: ["Assistant"]),
+        .executable(name: "WhisperWorker", targets: ["WhisperWorker"])
     ],
     targets: [
         // Core ML энкодер whisper. Отдельный таргет, потому что автогенерированный
@@ -56,6 +57,13 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Accelerate")
             ]
+        ),
+        // Изолированный процесс распознавания: крэш whisper не роняет UI.
+        .executableTarget(
+            name: "WhisperWorker",
+            dependencies: ["WhisperCore"],
+            path: "Sources/WhisperWorker",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
             name: "Assistant",
