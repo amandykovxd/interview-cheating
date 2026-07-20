@@ -34,6 +34,9 @@ final class OverlayViewModel: ObservableObject {
     // Текстовый чат с LLM.
     @Published var chatInput: String = ""
 
+    // Выбор модели ASR.
+    @Published var asrModelName: String = "base"
+
     // Действия наружу.
     var onToggleListening: (() -> Void)?
     var onCaptureAndAsk: (() -> Void)?
@@ -47,6 +50,7 @@ final class OverlayViewModel: ObservableObject {
     var onStopGeneration: (() -> Void)?
     var onAnswerFromConversation: (() -> Void)?   // ответить по услышанному разговору
     var onClearContext: (() -> Void)?
+    var onSelectModel: ((_ name: String) -> Void)?
 
     // Батчим обновление ответа, чтобы не перерисовывать на каждый токен.
     private var pendingAnswer: String = ""

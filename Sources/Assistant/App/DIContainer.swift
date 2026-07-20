@@ -6,9 +6,13 @@ final class DIContainer {
     let settings = SettingsStore()
     let secureStore: SecureStore = KeychainSecureStore()
 
+    let permissions = PermissionsService()
+    lazy var onboarding = OnboardingWindowController(permissions: permissions)
+
     lazy var contextManager = ContextManager()
     lazy var promptBuilder = PromptBuilder()
     lazy var visionPipeline = VisionPipeline()
+    lazy var regionSelector = RegionSelector()
     lazy var hotkeys = HotkeyService()
     lazy var overlayViewModel = OverlayViewModel()
 

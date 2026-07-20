@@ -74,6 +74,11 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Keys.echoCancellation) }
     }
 
+    var hasOnboarded: Bool {
+        get { defaults.bool(forKey: Keys.hasOnboarded) }
+        set { defaults.set(newValue, forKey: Keys.hasOnboarded) }
+    }
+
     private enum Keys {
         static let provider = "llm.provider"
         static let localPort = "llm.local.port"
@@ -82,5 +87,6 @@ final class SettingsStore {
         static let asrModelName = "asr.modelName"
         static let hideOverlayFromCapture = "overlay.hideFromCapture"
         static let echoCancellation = "audio.echoCancellation"
+        static let hasOnboarded = "app.hasOnboarded"
     }
 }

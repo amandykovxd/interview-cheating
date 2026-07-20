@@ -221,6 +221,25 @@ struct OverlayView: View {
             Text("Нужен API-ключ платформы OpenAI, не вход в подписку ChatGPT.")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
+
+            Divider().opacity(0.3)
+
+            HStack(spacing: 6) {
+                Text("Модель ASR").font(.system(size: 11))
+                Picker("", selection: Binding(
+                    get: { model.asrModelName },
+                    set: { model.onSelectModel?($0) }
+                )) {
+                    ForEach(WhisperModel.all, id: \.name) { m in
+                        Text("\(m.name) · \(m.sizeMB)МБ").tag(m.name)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+            }
+            Text("tiny/base быстрее, small точнее на терминах. Смена качает модель.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

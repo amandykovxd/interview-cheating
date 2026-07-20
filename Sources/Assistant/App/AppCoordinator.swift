@@ -33,7 +33,16 @@ final class AppCoordinator {
         prepareASR()
         overlay.show()
         applyCaptureHiding()
+        maybeShowOnboarding()
         Log.app.info("coordinator started")
+    }
+
+    private func maybeShowOnboarding() {
+        di.onboarding.onClosed = { [weak self] in self?.di.settings.hasOnboarded = true }
+        // первый запуск или нет обязательного микрофона — показываем экран доступов
+        if !di.settings.hasOnboarded || !di.permissions.essentialGranted {
+            di.onboarding.show()
+        }
     }
 
     // MARK: - ASR: модель и подмена движка
@@ -41,10 +50,12 @@ final class AppCoordinator {
     /// Готовим whisper в фоне: качаем модель, если её нет, грузим и подменяем
     /// заглушку. До этого момента приложение работает без ASR, но не падает.
     private func prepareASR() {
+        asrSetupTask?.cancel()
         let model = WhisperModel.named(di.settings.asrModelName)
         let store = di.modelStore
         let holder = di.asrEngine
         let vm = di.overlayViewModel
+        vm.asrModelName = model.name
 
         asrSetupTask = Task { [weak self] in
             do {
@@ -80,6 +91,7 @@ final class AppCoordinator {
     private func wireMenuBar() {
         menuBar.onToggleOverlay = { [weak self] in self?.overlay.toggle() }
         menuBar.onCaptureAndAsk = { [weak self] in self?.captureAndAsk() }
+        menuBar.onPermissions = { [weak self] in self?.di.onboarding.show() }
         menuBar.onQuit = { NSApp.terminate(nil) }
     }
 
@@ -97,7 +109,16 @@ final class AppCoordinator {
         vm.onStopGeneration = { [weak self] in self?.stopGeneration() }
         vm.onAnswerFromConversation = { [weak self] in self?.answerFromConversation() }
         vm.onClearContext = { [weak self] in self?.clearContext() }
+        vm.onSelectModel = { [weak self] name in self?.selectModel(name) }
         vm.portText = String(di.settings.localLlamaPort)
+        vm.asrModelName = di.settings.asrModelName
+    }
+
+    // Смена модели ASR: сохраняем и перезагружаем движок (скачает, если нужно).
+    private func selectModel(_ name: String) {
+        guard name != di.settings.asrModelName else { return }
+        di.settings.asrModelName = name
+        prepareASR()
     }
 
     // Основной cheat-флоу: ответить на то, что собеседник спросил вслух.
@@ -371,16 +392,23 @@ final class AppCoordinator {
         answerTask?.cancel()
         answerTask = Task { [weak self] in
             guard let self else { return }
+
+            // пользователь выделяет область экрана мышью; Escape — отмена
+            guard let rect = await self.selectRegion() else { return }
+
             self.di.overlayViewModel.status = .thinking
             self.overlay.show()
 
-            // снимаем область вокруг курсора (для MVP; выбор области — позже)
-            if let rect = self.regionAroundCursor(),
-               let ocr = await self.di.visionPipeline.recognizeRegion(rect) {
+            if let ocr = await self.di.visionPipeline.recognizeRegion(rect) {
                 await self.di.contextManager.ingest(ocr: ocr)
             }
-
             await self.streamAnswer(instruction: "Помоги с тем, что на экране и в разговоре.")
+        }
+    }
+
+    private func selectRegion() async -> CGRect? {
+        await withCheckedContinuation { cont in
+            di.regionSelector.selectRegion { rect in cont.resume(returning: rect) }
         }
     }
 
@@ -428,16 +456,5 @@ final class AppCoordinator {
         default:
             di.overlayViewModel.showError("Сбой соединения с LLM")
         }
-    }
-
-    private func regionAroundCursor() -> CGRect? {
-        let mouse = NSEvent.mouseLocation
-        guard let screen = NSScreen.main else { return nil }
-        // NSEvent — снизу-вверх, CG — сверху-вниз, переворачиваем Y
-        let flippedY = screen.frame.height - mouse.y
-        let size = CGSize(width: 600, height: 300)
-        return CGRect(x: mouse.x - size.width / 2,
-                      y: flippedY - size.height / 2,
-                      width: size.width, height: size.height)
     }
 }

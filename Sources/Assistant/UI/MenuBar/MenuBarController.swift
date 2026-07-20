@@ -6,6 +6,7 @@ final class MenuBarController {
     private let statusItem: NSStatusItem
     var onToggleOverlay: (() -> Void)?
     var onCaptureAndAsk: (() -> Void)?
+    var onPermissions: (() -> Void)?
     var onQuit: (() -> Void)?
 
     init() {
@@ -23,6 +24,9 @@ final class MenuBarController {
                      action: #selector(toggleAction), keyEquivalent: "")
             .target = self
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Разрешения…",
+                     action: #selector(permissionsAction), keyEquivalent: "")
+            .target = self
         menu.addItem(withTitle: "Выход", action: #selector(quitAction), keyEquivalent: "q")
             .target = self
         statusItem.menu = menu
@@ -30,6 +34,7 @@ final class MenuBarController {
 
     @objc private func captureAction() { onCaptureAndAsk?() }
     @objc private func toggleAction() { onToggleOverlay?() }
+    @objc private func permissionsAction() { onPermissions?() }
     @objc private func quitAction() { onQuit?() }
 }
 
