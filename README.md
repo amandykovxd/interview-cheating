@@ -121,12 +121,27 @@ partial отбрасывается, если движок ещё считает 
 Модель выбирается в UI (шестерёнка -> «Модель ASR»): tiny/base/small. Смена
 сохраняется, скачивает модель при необходимости и на лету подменяет движок.
 
-Про Core ML энкодер (не сделан, осознанно): он ускоряет самую тяжёлую часть на
-ANE, но требует отдельного `.mlmodelc`, который генерится Python-конвейером
-(coremltools + torch + openai-whisper), сборочного флага `WHISPER_USE_COREML` и
-компиляции `src/coreml/*.mm`. Это отдельная тяжёлая задача с большим артефактом
-модели; на M-серии для tiny/base выигрыш над уже работающим Metal небольшой.
-Сейчас backend — Metal + Accelerate.
+Core ML энкодер (сделан). Самая тяжёлая часть (энкодер) может считаться на ANE
+через Core ML. Python-конвертация не понадобилась: whisper.cpp публикует готовые
+`.mlmodelc` на Hugging Face — качаем как данные (`ggml-<model>-encoder.mlmodelc.zip`),
+распаковываем `ditto` рядом с `.bin`, whisper подхватывает автоматически.
+
+Сборка: coreml-обёртка (`whisper-encoder.mm` + автогенерированный Core ML код)
+вынесена в отдельный SPM-таргет `WhisperCoreML` — она требует ARC, а `WhisperCore`
+собирается с `-fno-objc-arc`. Флаги `WHISPER_USE_COREML` +
+`WHISPER_COREML_ALLOW_FALLBACK`: последний обязателен, иначе при отсутствии
+`.mlmodelc` `whisper_init` вернул бы nullptr вместо отката на Metal.
+
+Наблюдаемость: у whisper нет API «загружен ли Core ML», поэтому ловим его логи
+(`WhisperLog`) и по строке `Core ML model loaded` ставим `WhisperASREngine.usesCoreML`.
+В overlay статус показывает backend: `ASR: base · Core ML` или `· Metal`.
+Первый запуск на устройстве дольше — Core ML компилирует `.mlmodelc` под железо,
+дальше кешируется. Настройка `SettingsStore.useCoreML`, по умолчанию включено,
+при неудаче загрузки тихо остаёмся на Metal.
+
+Покрыто TDD: `WhisperModelCoreMLTests` (имена/пути энкодера),
+`WhisperCoreMLIntegrationTests` (энкодер реально грузится → `usesCoreML == true`;
+без энкодера движок всё равно инициализируется на Metal).
 
 ## Системный звук (собеседник)
 

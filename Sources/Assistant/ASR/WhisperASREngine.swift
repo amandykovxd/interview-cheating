@@ -28,6 +28,10 @@ final class WhisperASREngine: ASREngine {
     // Слишком короткие куски whisper превращает в мусор — такие пропускаем.
     private let minSamples = Int(AudioResampler.targetSampleRate * 0.3)
 
+    /// Загрузился ли Core ML энкодер (определяется по логам whisper при init).
+    /// false — работаем на Metal-энкодере.
+    let usesCoreML: Bool
+
     var isAvailable: Bool { true }
 
     init?(modelPath: URL, config: Config = Config()) {
@@ -35,13 +39,18 @@ final class WhisperASREngine: ASREngine {
         params.use_gpu = true       // Metal на Apple Silicon
         params.flash_attn = false
 
+        // ловим логи init, чтобы понять, поднялся ли Core ML энкодер
+        WhisperLog.installIfNeeded()
+        WhisperLog.clear()
+
         guard let ctx = whisper_init_from_file_with_params(modelPath.path, params) else {
             Log.asr.error("не удалось загрузить модель: \(modelPath.lastPathComponent)")
             return nil
         }
         self.ctx = ctx
         self.config = config
-        Log.asr.info("whisper готов: \(modelPath.lastPathComponent)")
+        self.usesCoreML = WhisperLog.joined().contains("Core ML model loaded")
+        Log.asr.info("whisper готов: \(modelPath.lastPathComponent), coreml=\(self.usesCoreML)")
     }
 
     deinit {

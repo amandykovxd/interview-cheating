@@ -79,6 +79,13 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Keys.hasOnboarded) }
     }
 
+    // Core ML энкодер whisper (ускоряет на ANE). По умолчанию включено —
+    // при неудаче загрузки тихо откатываемся на Metal.
+    var useCoreML: Bool {
+        get { defaults.object(forKey: Keys.useCoreML) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.useCoreML) }
+    }
+
     private enum Keys {
         static let provider = "llm.provider"
         static let localPort = "llm.local.port"
@@ -88,5 +95,6 @@ final class SettingsStore {
         static let hideOverlayFromCapture = "overlay.hideFromCapture"
         static let echoCancellation = "audio.echoCancellation"
         static let hasOnboarded = "app.hasOnboarded"
+        static let useCoreML = "asr.useCoreML"
     }
 }

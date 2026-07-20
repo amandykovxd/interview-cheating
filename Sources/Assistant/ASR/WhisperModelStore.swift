@@ -24,6 +24,14 @@ struct WhisperModel {
     var downloadURL: URL {
         URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)")!
     }
+
+    // Core ML энкодер. whisper ищет его рядом с .bin по имени <bin без .bin>-encoder.mlmodelc.
+    var coreMLEncoderName: String { "ggml-\(name)-encoder.mlmodelc" }
+    var coreMLZipName: String { "\(coreMLEncoderName).zip" }
+
+    var coreMLDownloadURL: URL {
+        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(coreMLZipName)")!
+    }
 }
 
 enum ModelStoreError: Error {
@@ -55,8 +63,16 @@ actor WhisperModelStore {
         directory.appendingPathComponent(model.fileName)
     }
 
+    func coreMLEncoderURL(for model: WhisperModel) -> URL {
+        directory.appendingPathComponent(model.coreMLEncoderName)
+    }
+
     func isDownloaded(_ model: WhisperModel) -> Bool {
         FileManager.default.fileExists(atPath: localURL(for: model).path)
+    }
+
+    func isEncoderDownloaded(_ model: WhisperModel) -> Bool {
+        FileManager.default.fileExists(atPath: coreMLEncoderURL(for: model).path)
     }
 
     /// Отдаёт путь к модели, при необходимости скачивая. Повторные вызовы во время
@@ -86,6 +102,40 @@ actor WhisperModelStore {
             state = .failed(error.localizedDescription)
             throw error
         }
+    }
+
+    /// Core ML энкодер: качаем zip и распаковываем рядом с .bin. Не обязателен —
+    /// без него whisper падает на Metal.
+    func ensureCoreMLEncoder(_ model: WhisperModel) async throws -> URL {
+        let dest = coreMLEncoderURL(for: model)
+        if FileManager.default.fileExists(atPath: dest.path) { return dest }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        Log.asr.info("downloading Core ML encoder \(model.name)")
+        let (tmp, response) = try await URLSession.shared.download(from: model.coreMLDownloadURL)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ModelStoreError.badResponse((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        let zip = directory.appendingPathComponent(model.coreMLZipName)
+        try? FileManager.default.removeItem(at: zip)
+        try FileManager.default.moveItem(at: tmp, to: zip)
+        defer { try? FileManager.default.removeItem(at: zip) }
+
+        try Self.unzip(zip, into: directory)     // ditto надёжно раскрывает .mlmodelc
+        guard FileManager.default.fileExists(atPath: dest.path) else {
+            throw ModelStoreError.writeFailed
+        }
+        Log.asr.info("Core ML encoder \(model.name) ready")
+        return dest
+    }
+
+    private static func unzip(_ zip: URL, into dir: URL) throws {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        p.arguments = ["-x", "-k", zip.path, dir.path]
+        try p.run()
+        p.waitUntilExit()
+        guard p.terminationStatus == 0 else { throw ModelStoreError.writeFailed }
     }
 
     private func download(_ model: WhisperModel,

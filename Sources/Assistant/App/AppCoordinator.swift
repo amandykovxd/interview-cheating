@@ -55,6 +55,7 @@ final class AppCoordinator {
         let store = di.modelStore
         let holder = di.asrEngine
         let vm = di.overlayViewModel
+        let wantCoreML = di.settings.useCoreML
         vm.asrModelName = model.name
 
         asrSetupTask = Task { [weak self] in
@@ -65,6 +66,17 @@ final class AppCoordinator {
                         vm.asrStatusText = "ASR: загрузка \(model.name) \(Int(progress * 100))%"
                     }
                 }
+
+                // Core ML энкодер — best-effort: качаем zip, при неудаче просто Metal
+                if wantCoreML, !(await store.isEncoderDownloaded(model)) {
+                    vm.asrStatusText = "ASR: загрузка Core ML \(model.name)"
+                    do {
+                        _ = try await store.ensureCoreMLEncoder(model)
+                    } catch {
+                        Log.asr.error("Core ML энкодер не скачался: \(error.localizedDescription)")
+                    }
+                }
+
                 // загрузка модели в память — тяжёлая, уводим с main
                 let engine = await Task.detached(priority: .userInitiated) {
                     WhisperASREngine(modelPath: url)
@@ -75,8 +87,9 @@ final class AppCoordinator {
                     return
                 }
                 holder.replace(with: engine)
-                vm.asrStatusText = "ASR: \(model.name)"
-                Log.asr.info("ASR переключён на whisper (\(model.name))")
+                let backend = engine.usesCoreML ? "Core ML" : "Metal"
+                vm.asrStatusText = "ASR: \(model.name) · \(backend)"
+                Log.asr.info("ASR переключён на whisper (\(model.name), \(backend))")
             } catch {
                 // без ASR продолжаем работать: OCR и текстовый чат остаются
                 vm.asrStatusText = "ASR: недоступен"

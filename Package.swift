@@ -11,10 +11,25 @@ let package = Package(
         .executable(name: "Assistant", targets: ["Assistant"])
     ],
     targets: [
+        // Core ML энкодер whisper. Отдельный таргет, потому что автогенерированный
+        // Core ML код требует ARC, а WhisperCore собирается с -fno-objc-arc.
+        .target(
+            name: "WhisperCoreML",
+            path: "Vendor/whisper-coreml",
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-Wno-shorten-64-to-32", "-O3", "-DNDEBUG"])
+            ],
+            linkerSettings: [
+                .linkedFramework("CoreML"),
+                .linkedFramework("Foundation")
+            ]
+        ),
         // Нативное ядро распознавания: ggml + whisper, Accelerate и Metal.
         // Собирается из исходников, без cmake и внешних пакетов.
         .target(
             name: "WhisperCore",
+            dependencies: ["WhisperCoreML"],
             path: "Vendor/whisper",
             exclude: ["LICENSE"],
             sources: [
@@ -33,7 +48,10 @@ let package = Package(
                 .unsafeFlags(["-Wno-shorten-64-to-32", "-O3", "-DNDEBUG"]),
                 .define("GGML_USE_ACCELERATE"),
                 .unsafeFlags(["-fno-objc-arc"]),
-                .define("GGML_USE_METAL")
+                .define("GGML_USE_METAL"),
+                // Core ML энкодер + мягкий откат на Metal, если модель не скачана
+                .define("WHISPER_USE_COREML"),
+                .define("WHISPER_COREML_ALLOW_FALLBACK")
             ],
             linkerSettings: [
                 .linkedFramework("Accelerate")
